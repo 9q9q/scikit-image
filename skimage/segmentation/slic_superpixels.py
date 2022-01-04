@@ -72,6 +72,72 @@ def _get_mask_centroids(mask, n_centroids, multichannel):
     return centroids, steps
 
 
+# def _get_mask_centroids(centroids_path):
+#     """Get pre-speciified centroids from landmarks on a mask.
+
+#     Parameters
+#     ----------
+#     mask : 3D ndarray
+#         The mask within which the centroids must be positioned.
+#     centroids_path : str
+#         Path to file listing centroids.
+
+#     Returns
+#     -------
+#     centroids : 2D ndarray
+#         The coordinates of the centroids with shape (n_centroids, 3).
+#     steps : 1D ndarray
+#         The approximate distance between two seeds in all dimensions.
+
+#     """
+
+#     return _get_grid_centroids(centroids_path)
+
+
+# # TODO what do centroids look like
+# def _get_grid_centroids(centroids_path):
+#     """Get pre-speciified centroids from landmarks.
+
+#     Parameters
+#     ----------
+#     centroids_path : str
+#         Path to file listing centroids.
+
+#     Returns
+#     -------
+#     centroids : 2D ndarray
+#         The coordinates of the centroids with shape (~n_centroids, 3).
+#     steps : 1D ndarray
+#         The approximate distance between two seeds in all dimensions.
+
+#     """
+#     centroids_y = np.array()
+#     centroids_x = np.array()
+#     with open(centroids_path) as f:
+#         line = f.readline().split(",")
+#         centroids_z.append(0.0)
+#         centroids_y.append(float(line[0]))
+#         centroids_x.append(float(line[1]))
+
+#     centroids = np.concatenate([centroids_z, centroids_y, centroids_x],
+#                                axis=-1)
+
+#     # Compute the minimum distance of each centroid to the others
+#     dist = squareform(pdist(centroids))
+#     np.fill_diagonal(dist, np.inf)
+#     closest_pts = dist.argmin(-1)
+#     steps = abs(centroids - centroids[closest_pts, :]).mean(0)
+
+#     return centroids, steps
+
+def _get_steps_from_centroids(centroids):
+    dist = squareform(pdist(centroids))
+    np.fill_diagonal(dist, np.inf)
+    closest_pts = dist.argmin(-1)
+    steps = abs(centroids - centroids[closest_pts, :]).mean(0)
+    return steps
+
+
 def _get_grid_centroids(image, n_centroids):
     """Find regularly spaced centroids on the image.
 
@@ -115,7 +181,7 @@ def _get_grid_centroids(image, n_centroids):
 def slic(image, n_segments=100, compactness=10., max_num_iter=10, sigma=0,
          spacing=None, multichannel=True, convert2lab=None,
          enforce_connectivity=True, min_size_factor=0.5, max_size_factor=3,
-         slic_zero=False, start_label=1, mask=None, *,
+         slic_zero=False, start_label=1, mask=None, centroids=None, *,
          channel_axis=-1):
     """Segments image using k-means clustering in Color-(x,y,z) space.
 
@@ -290,16 +356,32 @@ def slic(image, n_segments=100, compactness=10., max_num_iter=10, sigma=0,
 
     # initialize cluster centroids for desired number of segments
     update_centroids = False
-    if use_mask:
+    # specified by landmarks
+    if centroids is not None:
         mask = np.ascontiguousarray(mask, dtype=bool).view('uint8')
         if mask.ndim == 2:
             mask = np.ascontiguousarray(mask[np.newaxis, ...])
         if mask.shape != image.shape[:3]:
             raise ValueError("image and mask should have the same shape.")
-        centroids, steps = _get_mask_centroids(mask, n_segments, multichannel)
-        update_centroids = True
+
+        steps = _get_steps_from_centroids(centroids)
+        # print("centroids: {}".format(centroids))
+        # print("centroids_shape: {}".format(centroids.shape))
+        # print("steps: {}".format(steps))
+        # print("steps_shape: {}".format(steps.shape))
     else:
-        centroids, steps = _get_grid_centroids(image, n_segments)
+        if use_mask:
+            mask = np.ascontiguousarray(mask, dtype=bool).view('uint8')
+            if mask.ndim == 2:
+                mask = np.ascontiguousarray(mask[np.newaxis, ...])
+            if mask.shape != image.shape[:3]:
+                raise ValueError("image and mask should have the same shape.")
+            centroids, steps = _get_mask_centroids(
+                mask, n_segments, multichannel)
+            # steps example: [0.         4.96447493 6.13236838]
+            update_centroids = True
+        else:
+            centroids, steps = _get_grid_centroids(image, n_segments)
 
     if spacing is None:
         spacing = np.ones(3, dtype=dtype)
