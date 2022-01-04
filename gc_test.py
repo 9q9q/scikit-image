@@ -3,7 +3,7 @@
 aconda skimage-dev (local skimage dev environment)
 python gc_test.py
 
-To test
+python gc_test.py --dev
 """
 
 # TODO SLIC is merging segments (result is fewer than number of centroids) together.
